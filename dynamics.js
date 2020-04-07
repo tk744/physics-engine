@@ -1,161 +1,230 @@
 import Vector from './vector.js';
-import { Shape, Manifold } from './collision.js';
+import { getManifold } from './geometry.js'
 
-class RigidBody {
-    constructor(shape, position) {
-        this.position = position;
-        this.shape = shape;
-        this.density = 1;
-        this.friction = 0;
-        this.restitution = 1; // defines elasticity from 0-1.
+export class Material {
+    constructor(restitution=1, friction=0, density=1) {
+        this.restitution = restitution;
+        this.friction = friction;
+        this.density = density;
     }
+}
 
-    set x(x) {
-        this.position.x = x;
-        this.moveShape();
-    }
-
-    get x() {
-        return this.position.x;
-    }
-
-    set y(y) {
-        this.position.y = y;
-        this.moveShape();
-    }
-
-    get y() {
-        return this.position.y;
-    }
-
-    set shape(shape) {
-        this._shape = shape;
-        this.moveShape();
-    }
-
-    get shape() {
-        return this._shape;
+export class Body {
+    constructor(position, velocity, shape, material=new Material()) {
+        this.position   = position;
+        this.velocity   = velocity;
+        this.shape      = shape;
+        this.material   = material;
+        this.collisionHandlers = [];
+    
+        this.shape.relocate(this.position);
+        this.hitboxColor = 'magenta';
+        this.velocityColor = 'blue';
     }
 
     get mass() {
-        return this.density * this.shape.area;
+        return this.material.density * this.shape.area;
     }
 
     get inv_mass() {
         if (this.mass == 0 || this.mass == Infinity) {
             return 0;
         }
-        return 1 / this.mass;
+        else {
+            return 1 / this.mass;
+        }
+    }
+    
+    /**
+     * @param {Vector} vector the vector to add to the current position.
+     */
+    translate(vector) {
+        this.position = this.position.add(vector);
+        this.shape.relocate(this.position);
     }
 
-    moveShape() {
-        this._shape = this.shape.translate(this.position);
+    /**
+     * Update the position of this body.
+     * @param {number} dt change in time.
+     */
+    update(dt=1) {
+        this.translate(this.velocity.scale(dt));
     }
 
-    /*  Use this method only if you do not need the resulting Manifold */
-    intersects(other) {
-        const manifold = new Manifold(this, other)
-        return manifold.collision;
+    /**
+     * @param {(other: Body) => void } handler called after resloving a collision with another body.
+     */
+    addCollisionHandler(handler) {
+        this.collisionHandlers.push(handler);
+    }
+
+    /**
+     * Draws the hitbox and velocity vector onto the canvas.
+     * @param {*} ctx the canvas drawing context.
+     */
+    trace(ctx) {
+        // draw hitbox
+        ctx.beginPath();
+        this.shape.createPath(ctx);
+        ctx.strokeStyle = this.hitboxColor;
+        ctx.stroke();
+
+        // draw velocity vector
+        ctx.beginPath();
+        ctx.moveTo(this.position.x, this.position.y);
+        ctx.lineTo(this.position.x + this.velocity.x * 20, this.position.y + this.velocity.y * 20);
+        ctx.strokeStyle = this.velocityColor;
+        ctx.stroke();
+    }
+
+    /**
+     * Renders the body onto the canvas.
+     * @param {*} ctx the canvas drawing context.
+     */
+    draw(ctx) {
+        return
     }
 }
 
-export class StaticBody extends RigidBody {
-    constructor(shape, position) {
-        super(shape, position)
+/**
+ * A stationary body that does not react to collisions.
+ */
+export class StaticBody extends Body {
+    constructor(position, shape, material=new Material()) {
+        super(position, Vector.ZERO, shape, material);
     }
 
     get mass() {
         return Infinity;
     }
+}
 
-    get velocity() {
-        return Vector.ZERO;
+/**
+ * A moving body that does not react to collisions.
+ */
+export class KinematicBody extends Body {
+    constructor(position, velocity, shape, material=new Material()) {
+        super(position, velocity, shape, material);
     }
 }
 
-export class KinematicBody extends RigidBody {
-    constructor(shape, position, velocity) {
-        super(shape, position);
-        this.velocity = velocity;
-    }
-
-    update() {
-        this.position = this.position.add(this.velocity);
-        this.moveShape();
-    }
-
-    get momentum() {
-        return this.mass * this.velocity;
-    }
-}
-
-export class DynamicBody extends KinematicBody {
-    constructor(shape, position, velocity) {
-        super(shape, position, velocity);
-        this.force = Vector.ZERO;
-        this.persistentForce = Vector.ZERO;
+/**
+ * A body that reacts to forces and collisions with all bodies.
+ */
+export class DynamicBody extends Body {
+    constructor(position, velocity, shape, material=new Material()) {
+        super(position, velocity, shape, material);
         this.impulse = Vector.ZERO;
-        this.impulseCorrection = Vector.ZERO;
+        this.force = Vector.ZERO;
 
-        this.lifetimeCollisions = 0;
+        this.accelerationColor = 'green';
     }
 
     get acceleration() {
-        return this.force.add(this.persistentForce).scale(this.inv_mass)
+        return this.force.scale(this.inv_mass);
     }
 
-    update() {
-        if (this.impulse.magnitude > 0) {
-            this.velocity = this.velocity.add(this.impulse.scale(this.inv_mass));
-            this.impulse = Vector.ZERO;
-        }
-
-        if (this.acceleration.magnitude > 0) {
-            this.velocity = this.velocity.add(this.acceleration)
-            this.force = Vector.ZERO;
-        }
-
-        this.position = this.position.add(this.velocity);
-        this.position = this.position.add(this.impulseCorrection)
-        this.moveShape();
-
-       // this.applyForce(this.velocity.scale(-1)); // <-- drag force
-       // this.applyForce(new Vector(0, 300));       // <-- gravity force
+    /**
+     * @param {*} vector the force vector to apply.
+     */
+    addForce(vector) {
+        this.force = this.force.add(vector);
     }
 
-    applyForce(force, persistent=false) {
-        if (persistent) {
-            this.persistentForce = this.persistentForce.add(force)
-        }
-        else {
-            this.force = this.force.add(force);
-        }
+    /**
+     * @param {*} vector the impulse vector to apply.
+     */
+    addImpulse(vector) {
+        this.impulse = this.impulse.add(vector);
     }
 
-    impulseResolution(other, manifold=undefined) {
-        if (manifold == undefined) {
-            manifold = new Manifold(this.shape, other.shape);
+    /**
+     * Update the position of this body.
+     * @param {number} dt change in time.
+     */
+    update(dt=1) {
+        this.velocity = this.velocity.add(this.impulse.scale(this.inv_mass));
+        this.velocity = this.velocity.add(this.acceleration.scale(dt));
+        
+        this.translate(this.velocity.scale(dt));
+
+        this.impulse = Vector.ZERO;
+        this.force = Vector.ZERO;
+    }
+
+    /**
+     * Draws the hitbox, velocity vector, and acceleration vector onto the canvas.
+     * @param {*} ctx the canvas drawing context.
+     */
+    trace(ctx) {
+        super.trace(ctx);
+
+        // draw acceleration vector
+        ctx.beginPath();
+        ctx.moveTo(this.position.x, this.position.y);
+        ctx.lineTo(this.position.x + this.acceleration.x * 20, this.position.y + this.acceleration.y * 20);
+        ctx.strokeStyle = this.accelerationColor;
+        ctx.stroke();
+    }
+}
+
+/**
+ * An object that can detect and resolve collisions between bodies.
+ */
+export class Collision {
+    constructor(a, b) {
+        this.a = a, this.b = b;
+    }
+
+    /**
+     * @return {boolean} whether a valid collision occured between the bodies.
+     */
+    detect() {
+        // only dynamic bodies can collide
+        if (! (this.a instanceof DynamicBody || this.b instanceof DynamicBody)) {
+            return false;
         }
 
-        if (manifold.collision) {
-            // calculate relative velocity in terms of the collision direction
-            const relativeVelocity = other.velocity.subtract(this.velocity)
-            const collisionSpeed = relativeVelocity.dot(manifold.normal)
+        // computes contact manifold
+        if (this.manifold == undefined) {
+            this.manifold = getManifold(this.a.shape, this.b.shape);
+        }
 
-            // only resolve if bodies are approaching
-            if (collisionSpeed >= 0) {
-                const e = Math.min(this.restitution, other.restitution);
-                const j = ((1+e) * collisionSpeed) / (this.inv_mass + other.inv_mass);
-                
-                const impulse = manifold.normal.scale(j);
-                this.impulse = this.impulse.add(impulse)
+        // returns whether there is penetration ;)
+        return (this.manifold.magnitude > 0);
+    }
 
-                const correctionPercent = 0.2;
-                const slop = 0.01;
-                this.impulseCorrection = manifold.normal.scale(Math.max(manifold.penetration - slop, 0) * correctionPercent * this.inv_mass / (this.inv_mass + other.inv_mass))
+    /**
+     * Applies collision dynamics to the collided bodies using impulse resolution.
+     * Calls any collision handlers associated with each body.
+     */
+    resolve() {
+        if (! this.detect()) {
+            return
+        }
+        // calculate relative velocity in terms of the collision direction
+        const relativeVelocity = this.b.velocity.subtract(this.a.velocity)
+        const collisionSpeed = relativeVelocity.dot(this.manifold.unit)
 
-                this.lifetimeCollisions++;
+        // only resolve if bodies are approaching
+        if (collisionSpeed > 0) {
+            const e = Math.min(this.a.material.restitution, this.b.material.restitution);
+            const j = ((1+e) * collisionSpeed) / (this.a.inv_mass + this.b.inv_mass);
+            
+            const impulse = this.manifold.unit.scale(j);
+
+            // only add impulses to dynamic bodies
+            if (this.a instanceof DynamicBody) {
+                this.a.addImpulse(impulse);
             }
+            if (this.b instanceof DynamicBody) {
+                this.b.addImpulse(impulse.scale(-1));
+            }
+
+            // call collision handlers of both bodies
+            this.a.collisionHandlers.forEach(f => f(this.b));
+            this.b.collisionHandlers.forEach(f => f(this.a));
         }
     }
 }
+
