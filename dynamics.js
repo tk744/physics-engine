@@ -72,9 +72,9 @@ export class Body {
         // draw velocity vector
         ctx.beginPath();
         ctx.moveTo(this.position.x, this.position.y);
-        ctx.lineTo(this.position.x + this.velocity.x * 20, this.position.y + this.velocity.y * 20);
+        ctx.lineTo(this.position.x + this.velocity.x, this.position.y + this.velocity.y);
         ctx.strokeStyle = this.velocityColor;
-        ctx.stroke();
+       // ctx.stroke();
     }
 
     /**
@@ -116,12 +116,17 @@ export class DynamicBody extends Body {
         super(position, velocity, shape, material);
         this.impulse = Vector.ZERO;
         this.force = Vector.ZERO;
+        this.correction = Vector.ZERO;
 
         this.accelerationColor = 'green';
     }
 
     get acceleration() {
         return this.force.scale(this.inv_mass);
+    }
+
+    get rest() {
+        return this.velocity.magnitude < 1;
     }
 
     /**
@@ -138,18 +143,26 @@ export class DynamicBody extends Body {
         this.impulse = this.impulse.add(vector);
     }
 
+    addCorrection(vector) {
+        this.correction = this.correction.add(vector);
+    }
+
     /**
      * Update the position of this body.
      * @param {number} dt change in time.
      */
     update(dt=1) {
-        this.velocity = this.velocity.add(this.impulse.scale(this.inv_mass));
         this.velocity = this.velocity.add(this.acceleration.scale(dt));
+        this.velocity = this.velocity.add(this.impulse.scale(this.inv_mass));
         
-        this.translate(this.velocity.scale(dt));
+        if (! this.rest) {
+            this.translate(this.velocity.scale(dt));
+        }
+        this.translate(this.correction)
 
         this.impulse = Vector.ZERO;
         this.force = Vector.ZERO;
+        this.correction = Vector.ZERO;
     }
 
     /**
@@ -162,9 +175,9 @@ export class DynamicBody extends Body {
         // draw acceleration vector
         ctx.beginPath();
         ctx.moveTo(this.position.x, this.position.y);
-        ctx.lineTo(this.position.x + this.acceleration.x * 20, this.position.y + this.acceleration.y * 20);
+        ctx.lineTo(this.position.x + this.acceleration.x, this.position.y + this.acceleration.y);
         ctx.strokeStyle = this.accelerationColor;
-        ctx.stroke();
+     //   ctx.stroke();
     }
 }
 
@@ -188,10 +201,13 @@ export class Collision {
         // computes contact manifold
         if (this.manifold == undefined) {
             this.manifold = getManifold(this.a.shape, this.b.shape);
+
+            const relativeVelocity = this.b.velocity.subtract(this.a.velocity)
+            this.collisionSpeed = this.manifold.unit.dot(relativeVelocity)
         }
 
-        // returns whether there is penetration ;)
-        return (this.manifold.magnitude > 0);
+        // returns if the bodies are approaching and if there is penetration ;)
+        return (this.collisionSpeed > 0);
     }
 
     /**
@@ -202,29 +218,32 @@ export class Collision {
         if (! this.detect()) {
             return
         }
-        // calculate relative velocity in terms of the collision direction
-        const relativeVelocity = this.b.velocity.subtract(this.a.velocity)
-        const collisionSpeed = relativeVelocity.dot(this.manifold.unit)
 
-        // only resolve if bodies are approaching
-        if (collisionSpeed > 0) {
-            const e = Math.min(this.a.material.restitution, this.b.material.restitution);
-            const j = ((1+e) * collisionSpeed) / (this.a.inv_mass + this.b.inv_mass);
-            
-            const impulse = this.manifold.unit.scale(j);
+        // compute collision impusle
+        const e = Math.min(this.a.material.restitution, this.b.material.restitution);
+        const j = ((1+e) * this.collisionSpeed) / (this.a.inv_mass + this.b.inv_mass);
+        
+        const impulse = this.manifold.unit.scale(j);
 
-            // only add impulses to dynamic bodies
-            if (this.a instanceof DynamicBody) {
-                this.a.addImpulse(impulse);
-            }
-            if (this.b instanceof DynamicBody) {
-                this.b.addImpulse(impulse.scale(-1));
-            }
+        // positional drift correction using Baumgarte Stabilization
+        const b = 0.4;      // positional correction percent
+        const slop = 0.1;   // maximum penetration
+        let correction  = this.manifold.scale(b / (this.a.inv_mass + this.b.inv_mass))
+        correction = correction.scale(Math.max(this.manifold.magnitude - slop, 0))
 
-            // call collision handlers of both bodies
-            this.a.collisionHandlers.forEach(f => f(this.b));
-            this.b.collisionHandlers.forEach(f => f(this.a));
+        // only add impulses to dynamic bodies
+        if (this.a instanceof DynamicBody) {
+            this.a.addImpulse(impulse);
+         //   this.a.addCorrection(correction.scale(this.a.inv_mass));
         }
+        if (this.b instanceof DynamicBody) {
+            this.b.addImpulse(impulse.scale(-1));
+          //  this.b.addCorrection(correction.scale(-this.b.inv_mass));
+        }
+
+        // call collision handlers of both bodies
+        this.a.collisionHandlers.forEach(f => f(this.b));
+        this.b.collisionHandlers.forEach(f => f(this.a));
     }
 }
 
