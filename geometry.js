@@ -59,6 +59,9 @@ export class Box extends Shape {
     constructor(width, height, offset) {
         super(offset)
         this.w = width, this.h = height;
+        if (height == undefined) {
+            this.h = width;
+        }
     }
 
     get area() {
@@ -146,7 +149,7 @@ export function getManifold(a, b) {
                     return new Vector(0, overlap.y)
                 }
                 else {
-                    return new Vector(0, overlap.y)
+                    return new Vector(0, -overlap.y)
                 }
             }
         }
