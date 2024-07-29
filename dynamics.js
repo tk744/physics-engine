@@ -18,8 +18,8 @@ export class Body {
         this.collisionHandlers = [];
     
         this.shape.relocate(this.position);
-        this.hitboxColor = 'magenta';
-        this.velocityColor = 'blue';
+        this.hitboxColor = 'black';
+        this.velocityColor = 'magenta';
     }
 
     get mass() {
@@ -74,7 +74,7 @@ export class Body {
         ctx.moveTo(this.position.x, this.position.y);
         ctx.lineTo(this.position.x + this.velocity.x, this.position.y + this.velocity.y);
         ctx.strokeStyle = this.velocityColor;
-       // ctx.stroke();
+        // ctx.stroke();
     }
 
     /**
@@ -177,7 +177,7 @@ export class DynamicBody extends Body {
         ctx.moveTo(this.position.x, this.position.y);
         ctx.lineTo(this.position.x + this.acceleration.x, this.position.y + this.acceleration.y);
         ctx.strokeStyle = this.accelerationColor;
-     //   ctx.stroke();
+        // ctx.stroke();
     }
 }
 
@@ -246,4 +246,3 @@ export class Collision {
         this.b.collisionHandlers.forEach(f => f(this.a));
     }
 }
-
