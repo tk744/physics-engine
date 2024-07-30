@@ -11,22 +11,22 @@ export class Animation {
 
         this.world.addBody(new Dynamics.StaticBody(
             new Vector(canvas.width/2, 0), 
-            new Geometry.Box(canvas.width, 10, new Vector(0, 0))
+            new Geometry.Box(canvas.width, 1, new Vector(0, 0))
         ));
         
         this.world.addBody(new Dynamics.StaticBody(
             new Vector(canvas.width/2, canvas.height), 
-            new Geometry.Box(canvas.width, 10, new Vector(0, 0))
+            new Geometry.Box(canvas.width, 1, new Vector(0, 0))
         ));
         
         this.world.addBody(new Dynamics.StaticBody(
             new Vector(0, canvas.height/2), 
-            new Geometry.Box(10, canvas.height, new Vector(0, 0))
+            new Geometry.Box(1, canvas.height, new Vector(0, 0))
         ));
         
         this.world.addBody(new Dynamics.StaticBody(
             new Vector(canvas.width, canvas.height/2), 
-            new Geometry.Box(10, canvas.height, new Vector(0, 0))
+            new Geometry.Box(1, canvas.height, new Vector(0, 0))
         ));
 
         this.world.addBody(new Dynamics.DynamicBody(
@@ -36,16 +36,16 @@ export class Animation {
             new Dynamics.Material(1)
         ));
 
-        for(var i = 0; i < 20; i++) {
+        for(var i = 0; i < 50; i++) {
             const d = Math.min(canvas.width, canvas.height)/2;
             const [dx, dy] = [Math.random()*2*d-d, Math.random()*2*d-d];
             const v = 100;
             const [vx, vy] = [Math.random()*2*v-v, Math.random()*2*v-v];
-            const r = 25 + Math.random() * 25;
+            const s = 25 + Math.random() * 25;
             this.world.addBody(new Dynamics.DynamicBody(
                 new Vector(canvas.width/2 + dx, canvas.height/2 + dy),
                 new Vector(vx, vy),
-                new Geometry.Circle(r),
+                Math.random()*2 > 1 ? new Geometry.Circle(s) : new Geometry.Box(s),
                 new Dynamics.Material(1)
             ));
         }
